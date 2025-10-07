@@ -80,7 +80,7 @@ func checkerHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	// getOrders(ctx, b, update)
+	wg := &sync.WaitGroup{}
 
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
@@ -88,9 +88,10 @@ func checkerHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	for {
 		select {
 		case <-ticker.C:
-			go getOrders(ctx, b, update)
+			wg.Wait()
+			wg.Add(1)
+			go getOrders(wg, ctx, b, update)
 		case <-session.CancelChannel:
-			log.Println("закончили2")
 			b.SendMessage(ctx, &bot.SendMessageParams{
 				ChatID: chatID,
 				Text:   "Парсинг остановлен",
@@ -100,7 +101,9 @@ func checkerHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	}
 }
 
-func getOrders(ctx context.Context, b *bot.Bot, update *models.Update) {
+func getOrders(wg *sync.WaitGroup, ctx context.Context, b *bot.Bot, update *models.Update) {
+	defer wg.Done()
+
 	err := check(ctx, b, update)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
@@ -146,7 +149,7 @@ func check(ctx context.Context, b *bot.Bot, update *models.Update) error {
 		}
 
 		select {
-		case <-time.After(3 * time.Second):
+		case <-time.After(5 * time.Second):
 		case <-ctx.Done():
 			return ctx.Err()
 		}
