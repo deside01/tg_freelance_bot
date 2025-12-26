@@ -20,6 +20,7 @@ import (
 
 type UserSession struct {
 	// Page          int
+	isRunning     bool
 	CancelChannel chan struct{}
 }
 
@@ -77,6 +78,15 @@ func checkerHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	chatID := update.Message.Chat.ID
 
 	session := getUserSession(chatID)
+	if session.isRunning {
+		b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: chatID,
+			Text:   "Парсинг уже запущен",
+		})
+		return
+	}
+	session.isRunning = true
+
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -159,12 +169,22 @@ func check(ctx context.Context, b *bot.Bot, update *models.Update) error {
 }
 
 func cancelHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	session := getUserSession(update.Message.Chat.ID)
+	chatID := update.Message.Chat.ID
+
+	session := getUserSession(chatID)
 	sessionMutex.Lock()
 	defer sessionMutex.Unlock()
 
+	if !session.isRunning {
+		b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: chatID,
+			Text:   "Парсинг не запущен",
+		})
+		return
+	}
+
 	close(session.CancelChannel)
-	session.CancelChannel = make(chan struct{})
+	session.CancelChannel = make(chan struct{}, 1)
 }
 
 func callbackHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -191,6 +211,7 @@ func getUserSession(chatID int64) *UserSession {
 
 	newSession := &UserSession{
 		// Page:          1,
+		isRunning:     false,
 		CancelChannel: make(chan struct{}, 1),
 	}
 	sessions[chatID] = newSession
